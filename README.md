@@ -1,7 +1,7 @@
 # MovieMerger
 ## Merge MP4 and LSL Audio from XDF
 
-This script is designed to merge an MP4 video file with an audio stream from an XDF file. It leverages the capabilities of [Lab Streaming Layer (LSL)](https://labstreaminglayer.readthedocs.io/info/what_is_lsl.html) to handle synchronized data streams, [TimeShot](https://github.com/markspan/TimeShot) for precise timestamping, and [AudioCapture](https://github.com/labstreaminglayer/App-AudioCapture) for capturing audio data.
+This simple script is designed to merge an MP4 video file with an audio stream from an XDF file. It leverages the capabilities of [Lab Streaming Layer (LSL)](https://labstreaminglayer.readthedocs.io/info/what_is_lsl.html) to handle synchronized data streams, [TimeShot](https://github.com/markspan/TimeShot) for precise timestamping, and [AudioCapture](https://github.com/labstreaminglayer/App-AudioCapture) for capturing audio data.
 
 ## Overview
 
@@ -68,10 +68,10 @@ The script uses logging to provide information about the merging process. Logs w
 ## References
 
 - [Lab Streaming Layer (LSL)](https://labstreaminglayer.readthedocs.io/info/what_is_lsl.html): A system for the unified collection of measurement time series in research.
-- [TimeShot](https://github.com/markspan/TimeShot): A tool for precise timestamping.
-- [AudioCapture](https://github.com/labstreaminglayer/App-AudioCapture): An application for capturing audio data.
+- [TimeShot](https://github.com/markspan/TimeShot): An application for precise timestamping of video frames using LSL.
+- [AudioCapture](https://github.com/labstreaminglayer/App-AudioCapture): An application for capturing audio data using LSL.
 
-This script is intended for scientific users who need to synchronize and merge video and audio data streams for analysis.
+This script is intended for users who need to synchronize and merge video and audio data streams for analysis.
 
 
 
