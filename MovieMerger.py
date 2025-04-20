@@ -22,7 +22,7 @@ Dependencies:
     - ffmpeg-python
     - ffmpeg (must be installed and available on PATH)
 
-Author: ChatGPT
+Author: m.m.span@rug.nl, chatGPT
 """
 
 import argparse
