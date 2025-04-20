@@ -1,3 +1,30 @@
+#!/usr/bin/env python3
+"""
+merge_xdf_audio_video.py
+
+Synchronizes and merges an MP4 video file with an audio stream from an XDF file
+based on their timestamps. Only the overlapping portion between the audio and video
+is used to ensure accurate alignment. Output is a synchronized MP4 file with audio.
+
+Usage:
+    python merge_xdf_audio_video.py video.mp4 recording.xdf [video_stream_name] [audio_stream_name]
+
+Arguments:
+    video.mp4             Path to the video file.
+    recording.xdf         Path to the XDF file.
+    video_stream_name     (Optional) Stream name to use for video timestamps. Defaults to first stream starting with 'Cam'.
+    audio_stream_name     (Optional) Stream name to use for audio. Defaults to stream with type 'Audio'.
+
+Dependencies:
+    - numpy
+    - soundfile
+    - pyxdf
+    - ffmpeg-python
+    - ffmpeg (must be installed and available on PATH)
+
+Author: ChatGPT
+"""
+
 import argparse
 import ffmpeg
 import tempfile
@@ -13,25 +40,23 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 def write_wav(audio_stream: Dict, samplerate: int) -> Tuple[str, int, float]:
     """
-    Converts an audio stream from XDF into a WAV file.
+    Converts an audio stream from XDF into a temporary WAV file.
 
     Args:
-        audio_stream (dict): The audio stream from XDF containing the audio time series and timestamps.
-        samplerate (int): The sampling rate of the audio data.
+        audio_stream (dict): The audio stream from XDF containing time series and timestamps.
+        samplerate (int): The nominal sampling rate of the audio stream.
 
     Returns:
-        Tuple[str, int, float]: Path to the generated WAV file, the samplerate of the audio,
-                                and the timestamp of the audio start.
+        Tuple[str, int, float]: Path to the written WAV file, its sample rate,
+                                and the starting timestamp of the audio.
     """
     try:
         samples = np.array(audio_stream['time_series'])
         timestamps = np.array(audio_stream['time_stamps'])
 
-        # Flatten samples if there is only one channel
         if samples.ndim > 1 and samples.shape[1] == 1:
             samples = samples.flatten()
 
-        # Convert to int16 PCM if samples are float and normalized
         if samples.dtype.kind == 'f' and np.max(np.abs(samples)) <= 1.0:
             samples = (samples * 32767).astype(np.int16)
 
@@ -44,17 +69,17 @@ def write_wav(audio_stream: Dict, samplerate: int) -> Tuple[str, int, float]:
 
 def get_stream_by_name(streams: List[Dict], name: str) -> Dict:
     """
-    Fetches a stream from XDF by its name.
+    Retrieves a stream from the list by name.
 
     Args:
-        streams (list): A list of streams loaded from XDF.
-        name (str): The name of the stream to retrieve.
+        streams (list): All streams loaded from an XDF file.
+        name (str): The desired stream name.
 
     Returns:
-        dict: The stream that matches the given name.
+        dict: The matching stream.
 
     Raises:
-        ValueError: If the stream with the given name is not found in the XDF.
+        ValueError: If no stream with the given name exists.
     """
     for stream in streams:
         if stream['info']['name'][0] == name:
@@ -63,16 +88,16 @@ def get_stream_by_name(streams: List[Dict], name: str) -> Dict:
 
 def find_audio_stream_by_type(streams: List[Dict]) -> Dict:
     """
-    Finds the audio stream from the XDF by its type.
+    Finds the audio stream using the 'type' field.
 
     Args:
-        streams (list): A list of streams loaded from XDF.
+        streams (list): All streams loaded from an XDF file.
 
     Returns:
-        dict: The stream with type 'Audio'.
+        dict: The audio stream.
 
     Raises:
-        ValueError: If no stream with type 'Audio' is found in the XDF.
+        ValueError: If no stream with type 'Audio' is found.
     """
     for stream in streams:
         if 'type' in stream['info'] and stream['info']['type'][0] == 'Audio':
@@ -81,16 +106,16 @@ def find_audio_stream_by_type(streams: List[Dict]) -> Dict:
 
 def find_camera_stream_by_prefix(streams: List[Dict]) -> Dict:
     """
-    Finds the first camera stream from the XDF by checking for a name prefix.
+    Finds the first video stream whose name starts with 'Cam'.
 
     Args:
-        streams (list): A list of streams loaded from XDF.
+        streams (list): All streams loaded from an XDF file.
 
     Returns:
-        dict: The first camera stream found.
+        dict: The camera/video stream.
 
     Raises:
-        ValueError: If no stream with a name starting with 'Cam' is found in the XDF.
+        ValueError: If no such stream is found.
     """
     cam_streams = [s for s in streams if s['info']['name'][0].startswith('Cam')]
     if not cam_streams:
@@ -99,89 +124,84 @@ def find_camera_stream_by_prefix(streams: List[Dict]) -> Dict:
     logging.info(f"Using camera stream with name: {selected['info']['name'][0]}")
     return selected
 
-def merge(mp4_path: str, xdf_path: str, video_stream_name: Optional[str] = None, audio_stream_name: Optional[str] = None) -> None:
+def merge(mp4_path: str, xdf_path: str,
+          video_stream_name: Optional[str] = None,
+          audio_stream_name: Optional[str] = None) -> None:
     """
-    Merges an MP4 video file with an audio stream from an XDF file.
+    Synchronizes and merges an MP4 video with an audio stream from XDF.
+    Only the overlapping part of the streams is used.
 
     Args:
-        mp4_path (str): Path to the MP4 video file.
-        xdf_path (str): Path to the XDF file containing the streams.
-        video_stream_name (str, optional): The name of the video stream in the XDF file. Defaults to None.
-        audio_stream_name (str, optional): The name of the audio stream in the XDF file. Defaults to None.
+        mp4_path (str): Path to the MP4 video.
+        xdf_path (str): Path to the XDF file.
+        video_stream_name (str, optional): Name of the video stream in XDF.
+        audio_stream_name (str, optional): Name of the audio stream in XDF.
 
     Returns:
-        None: This function creates the merged MP4 file and saves it.
+        None. The merged file is written to disk with '_synced' appended.
     """
     try:
-        # Load streams from XDF
         streams, _ = pyxdf.load_xdf(xdf_path)
 
-        # Get video stream by name or use camera stream if not provided
-        if video_stream_name:
-            video_stream = get_stream_by_name(streams, video_stream_name)
-        else:
-            video_stream = find_camera_stream_by_prefix(streams)
-            video_stream_name = video_stream['info']['name'][0]
+        # Get video and audio streams
+        video_stream = get_stream_by_name(streams, video_stream_name) if video_stream_name else find_camera_stream_by_prefix(streams)
+        audio_stream = get_stream_by_name(streams, audio_stream_name) if audio_stream_name else find_audio_stream_by_type(streams)
 
-        # Get audio stream by name or use default 'Audio' stream
-        if audio_stream_name:
-            audio_stream = get_stream_by_name(streams, audio_stream_name)
-        else:
-            audio_stream = find_audio_stream_by_type(streams)
-            audio_stream_name = audio_stream['info']['name'][0]
-            logging.info(f"Using audio stream with name: {audio_stream_name}")
-
-        # Calculate the time offsets between the video and audio streams
         video_start = float(video_stream['time_stamps'][0])
+        video_end = float(video_stream['time_stamps'][-1])
         audio_start = float(audio_stream['time_stamps'][0])
-        offset = audio_start - video_start
+        audio_end = float(audio_stream['time_stamps'][-1])
 
-        # Write audio to a WAV file
+        # Calculate overlap
+        sync_start = max(video_start, audio_start)
+        sync_end = min(video_end, audio_end)
+        if sync_end <= sync_start:
+            raise ValueError("No overlapping time window between audio and video.")
+
+        audio_offset = sync_start - audio_start
+        video_offset = sync_start - video_start
+        trim_duration = sync_end - sync_start
+
+        logging.info(f"Overlap from {sync_start:.3f}s to {sync_end:.3f}s ({trim_duration:.3f}s)")
+
+        # Write audio to WAV
         audio_samplerate = int(float(audio_stream['info']['nominal_srate'][0]))
-        wav_path, samplerate, _ = write_wav(audio_stream, audio_samplerate)
+        wav_path, _, _ = write_wav(audio_stream, audio_samplerate)
 
-        # Create FFmpeg input streams
-        video_input = ffmpeg.input(mp4_path)
-        audio_input = ffmpeg.input(wav_path)
+        # Prepare trimmed audio
+        audio_input = (
+            ffmpeg.input(wav_path)
+            .audio
+            .filter('atrim', start=audio_offset, duration=trim_duration)
+            .filter('asetpts', 'PTS-STARTPTS')
+        )
 
-        # Apply audio offset or trim audio if needed
-        if offset >= 0:
-            delay_ms = int(offset * 1000)
-            logging.info(f"Applying audio delay: {delay_ms}ms")
-            audio = audio_input.audio.filter('adelay', delays=f'{delay_ms}|{delay_ms}')
-            video = video_input.video
-        else:
-            trim_secs = -offset
-            logging.info(f"Trimming audio by: {trim_secs:.3f}s")
-            audio = (
-                audio_input.audio
-                .filter('atrim', start=trim_secs)
-                .filter('asetpts', 'PTS-STARTPTS')
-            )
-            video = video_input.video
+        # Prepare trimmed video
+        video_input = (
+            ffmpeg.input(mp4_path)
+            .trim(start=video_offset, duration=trim_duration)
+            .setpts('PTS-STARTPTS')
+            .video
+        )
 
-        # Define output path and run FFmpeg command
-        output_path = os.path.splitext(mp4_path)[0] + "_merged.mp4"
+        output_path = os.path.splitext(mp4_path)[0] + "_synced.mp4"
 
         (
             ffmpeg
-            .output(video, audio, output_path,
+            .output(video_input, audio_input, output_path,
                     vcodec='copy', acodec='aac', shortest=None)
             .overwrite_output()
             .run()
         )
 
-        logging.info(f"Merged file created: {output_path}")
+        logging.info(f"Synchronized output written to: {output_path}")
+
     except Exception as e:
-        logging.error(f"Error merging files: {e}")
+        logging.error(f"Failed to merge audio and video: {e}")
         raise
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Merge MP4 and LSL audio from XDF.")
+    parser = argparse.ArgumentParser(description="Synchronize and merge MP4 with audio from XDF.")
     parser.add_argument("mp4filename", help="Path to the MP4 video file")
     parser.add_argument("xdffilename", help="Path to the XDF file")
-    parser.add_argument("videostream", nargs="?", default=None, help="(Optional) Stream name for video timestamps in the XDF")
-    parser.add_argument("audiostream", nargs="?", default=None, help="(Optional) Stream name for audio in the XDF")
-
-    args = parser.parse_args()
-    merge(args.mp4filename, args.xdffilename, args.videostream, args.audiostream)
+    parser.add_argument("videostream", nargs="?", default=None, help="(
