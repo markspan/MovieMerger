@@ -1,77 +1,66 @@
-# MovieMerger
-## Merge MP4 and LSL Audio from XDF
+# XDF Audio + MP4 Video Synchronizer
 
-This simple script is designed to merge an MP4 video file with an audio stream from an XDF file. It leverages the capabilities of [Lab Streaming Layer (LSL)](https://labstreaminglayer.readthedocs.io/info/what_is_lsl.html) to handle synchronized data streams, [TimeShot](https://github.com/markspan/TimeShot) for precise timestamping, and [AudioCapture](https://github.com/labstreaminglayer/App-AudioCapture) for capturing audio data.
+Synchronize and merge an MP4 video file with audio data from an XDF file using precise timestamp alignment.  
+Designed for use with **TimeShot** (video recording) and **AudioStream** (audio-to-LSL), this tool lets you reconstruct fully synchronized audiovisual data from independent sources.
 
-## Overview
+## Why Use This?
 
-The script performs the following steps:
-1. Loads the XDF file containing the audio and video streams.
-2. Extracts the specified audio and video streams from the XDF file.
-3. Converts the audio stream into a WAV file.
-4. Merges the MP4 video file with the WAV audio file, synchronizing them based on their timestamps.
-5. Saves the merged file as a new MP4 file.
+In multimodal experiments, you may:
 
-## Prerequisites
+- Record video using **TimeShot**, which embeds precise LSL timestamps.
+- Record microphone audio using **AudioStream**, a simple app that streams live audio into the LSL network.
+- Save all LSL streams (including audio and timestamps) into an `.xdf` file using LabRecorder.
 
-Before running the script, ensure you have the following dependencies installed:
-- `ffmpeg`
-- `soundfile`
-- `numpy`
-- `pyxdf`
+This script ensures the audio and video are perfectly aligned by:
 
-You can install these dependencies using pip:
-```
-pip install ffmpeg soundfile numpy pyxdf
-```
+- Using LSL/XDF timestamps as the ground truth.
+- Finding the overlapping time range between audio and video.
+- Trimming and synchronizing both streams using linear interpolation (to handle clock drift or offset).
 
-## Usage
+## How to Use
 
-To use the script, run it from the command line with the following arguments:
+### Requirements
 
-```
-python merge_script.py <mp4filename> <xdffilename> [videostream] [audiostream]
+- Python 3.7+
+- `ffmpeg` (must be installed and in your system's PATH)
+- Python packages: `numpy`, `soundfile`, `ffmpeg-python`, `pyxdf`
+
+Install dependencies:
+
+```bash
+pip install numpy soundfile ffmpeg-python pyxdf
 ```
 
-- `<mp4filename>`: Path to the MP4 video file.
-- `<xdffilename>`: Path to the XDF file containing the streams.
-- `[videostream]`: (Optional) Stream name for video timestamps in the XDF.
-- `[audiostream]`: (Optional) Stream name for audio in the XDF.
+### Usage
 
-## Example
-
-```
-python merge_script.py video.mp4 data.xdf Cam1 Audio1
+```bash
+python merge_xdf_audio_video.py video.mp4 recording.xdf [video_stream_name] [audio_stream_name]
 ```
 
-In this example:
-- `video.mp4` is the path to the MP4 video file.
-- `data.xdf` is the path to the XDF file.
-- `Cam1` is the name of the video stream in the XDF file.
-- `Audio1` is the name of the audio stream in the XDF file.
+- `video.mp4`: Your video file, ideally recorded using **TimeShot**.
+- `recording.xdf`: The XDF file saved from LabRecorder, containing LSL streams from **AudioStream**, TimeShot, and any other sensors.
+- `video_stream_name` (optional): Name of the stream containing video frame timestamps (defaults to first stream starting with `'Cam'`).
+- `audio_stream_name` (optional): Name of the stream containing audio (defaults to first stream of type `'Audio'`).
 
-## Options
+### Output
 
-- **MP4 Filename**: The path to the MP4 video file you want to merge with the audio stream.
-- **XDF Filename**: The path to the XDF file containing the audio and video streams.
-- **Video Stream Name**: (Optional) The name of the video stream in the XDF file. If not provided, the script will automatically select the first stream with a name starting with 'Cam'.
-- **Audio Stream Name**: (Optional) The name of the audio stream in the XDF file. If not provided, the script will automatically select the first stream with the type 'Audio'.
+Produces a new video file:
 
-## Output
+```
+video_synced.mp4
+```
 
-The script will create a new MP4 file with the merged video and audio streams. The output file will be named with a `_merged` suffix before the `.mp4` extension. For example, if the input MP4 file is named `video.mp4`, the output file will be named `video_merged.mp4`.
+This file contains the original video and the precisely synchronized and trimmed audio.
 
-## Logging
+## When to Use
 
-The script uses logging to provide information about the merging process. Logs will be displayed in the console, indicating the progress and any errors encountered.
+- When you record video and audio separately, but synchronize them via LSL.
+- When using **TimeShot** for high-fidelity, timestamped video.
+- When using **AudioStream** to send live audio into the LSL network.
+- When you need accurate, reproducible AV data for behavioral research, human-computer interaction, or cognitive experiments.
 
-## References
+---
 
-- [Lab Streaming Layer (LSL)](https://labstreaminglayer.readthedocs.io/info/what_is_lsl.html): A system for the unified collection of measurement time series in research.
-- [TimeShot](https://github.com/markspan/TimeShot): An application for precise timestamping of video frames using LSL.
-- [AudioCapture](https://github.com/labstreaminglayer/App-AudioCapture): An application for capturing audio data using LSL.
-
-This script is intended for users who need to synchronize and merge video and audio data streams for analysis.
-
-
-
+**TimeShot**: Open-source, low-latency video capture with LSL timestamps.  
+**AudioStream**: A lightweight app that streams mic input into LSL.  
+**This Script**: Synchronize them into one timeline, perfectly aligned.
