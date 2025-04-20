@@ -1,7 +1,7 @@
 # XDF Audio + MP4 Video Synchronizer
 
 Synchronize and merge an MP4 video file with audio data from an XDF file using precise timestamp alignment.  
-Designed for use with **TimeShot** (video recording) and **AudioStream** (audio-to-LSL), this tool lets you reconstruct fully synchronized audiovisual data from independent sources.
+Designed for use with **TimeShot** (video recording) and **AudioStream** (audio-to-LSL), this tool lets you reconstruct fully synchronized audiovisual data from co-revorded sources.
 
 ## Why Use This?
 
