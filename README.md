@@ -34,7 +34,7 @@ pip install numpy soundfile ffmpeg-python pyxdf
 ### Usage
 
 ```bash
-python merge_xdf_audio_video.py video.mp4 recording.xdf [video_stream_name] [audio_stream_name]
+python moviemerger.py video.mp4 recording.xdf [video_stream_name] [audio_stream_name]
 ```
 
 - `video.mp4`: Your video file, ideally recorded using **TimeShot**.
