@@ -204,19 +204,30 @@ def _is_macho(path: Path) -> bool:
         return f.read(4) in _MACHO_MAGIC
 
 
+def archive_path(target: Target, version: str, dist_dir: Path) -> Path:
+    """Where the release archive for ``target`` goes, e.g. ``MovieMerger-2.0.0-macos-x64.zip``.
+
+    Built by appending the extension: ``Path.with_suffix`` would take the
+    ``.0-macos-x64`` of ``2.0.0-macos-x64`` for an extension and replace it.
+    """
+    extension = ".tar.gz" if target.system == "linux" else ".zip"
+    return dist_dir / f"{APP_NAME}-{version}-{target.tag}{extension}"
+
+
 def make_archive(target: Target, version: str, app: Path, dist_dir: Path) -> Path:
     """Pack ``app`` into the release archive for ``target``."""
     dist_dir.mkdir(parents=True, exist_ok=True)
-    base = dist_dir / f"{APP_NAME}-{version}-{target.tag}"
+    archive = archive_path(target, version, dist_dir)
     if target.system == "macos":
         # ditto keeps symlinks, permissions and code signatures intact.
-        archive = base.with_suffix(".zip")
         subprocess.run(["ditto", "-c", "-k", "--keepParent", str(app), str(archive)], check=True)
-        return archive
-    if target.system == "linux":
-        # tar keeps the executable bits that zip would lose.
-        return Path(shutil.make_archive(str(base), "gztar", app.parent, app.name))
-    return Path(shutil.make_archive(str(base), "zip", app.parent, app.name))
+    else:
+        # tar (Linux) keeps the executable bits that zip would lose.
+        base = archive.name.removesuffix(".tar.gz").removesuffix(".zip")
+        shutil.make_archive(str(dist_dir / base), "gztar" if target.system == "linux" else "zip", app.parent, app.name)
+    if not archive.is_file():
+        raise SystemExit(f"Archiving did not produce {archive}")
+    return archive
 
 
 if __name__ == "__main__":

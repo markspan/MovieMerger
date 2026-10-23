@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import __version__
+from ._windows import repair_standard_handles
 from .pipeline import (
     Cancelled,
     ProgressCallback,
@@ -608,6 +609,7 @@ def app_icon(sizes: tuple[int, ...] = (16, 24, 32, 48, 64, 128, 256)) -> QIcon:
 
 def main() -> int:
     """Start the GUI; returns the application's exit code."""
+    repair_standard_handles()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     if sys.platform == "win32":
         import ctypes

@@ -68,6 +68,9 @@ def main() -> int:
         expect_close("sync: flash vs beep", flash, beep, TOLERANCE)
         expect_close("sync: beep position", beep, EVENT_TIME - recording.frame_times_a[0], 0.005)
 
+        if sys.platform == "win32":
+            check_console_less_start(executable, recording, folder / "console-less")
+
         mosaic = folder / "mosaic.mp4"
         run(executable, "mosaic", str(recording.xdf), *videos, "--fps", "25", "--width", "320", "-o", str(mosaic))
         info = probe_video(mosaic)
@@ -94,6 +97,39 @@ def check_icon(executable: Path) -> None:
         icon = executable.parent / "moviemerger" / "resources" / "moviemerger.svg"
     if not icon.is_file() or icon.stat().st_size == 0:
         raise SystemExit(f"The release lacks its icon {icon}")
+
+
+# Exit codes of the probe below: subprocess failed on the inherited invalid handles, or worked.
+_PROBE_HANDLE_INVALID, _PROBE_OK = 3, 0
+_PROBE = f"""
+import subprocess, sys
+try:
+    subprocess.run([sys.executable, "-c", "pass"], check=True)
+except OSError as error:
+    sys.exit({_PROBE_HANDLE_INVALID} if getattr(error, "winerror", None) == 6 else 4)
+"""
+
+
+def check_console_less_start(executable: Path, recording, out_dir: Path) -> None:
+    """Windows: the app must still run ffmpeg when started without a console.
+
+    That is how a double-click or a file dropped on the executable starts it,
+    with standard handles that ``subprocess`` cannot pass on. A plain Python
+    probe started the same way must fail on them first, which proves the
+    test reproduces the situation; the compiled app must then succeed.
+    """
+    import consoleless
+
+    probe = consoleless.run([sys.executable, "-c", _PROBE], _env_without_ffmpeg())
+    if probe != _PROBE_HANDLE_INVALID:
+        raise SystemExit(f"Could not reproduce a console-less start (probe exited with {probe}).")
+    code = consoleless.run(
+        [str(executable), "sync", str(recording.xdf), str(recording.video_a), "--fps", "25", "--out-dir", str(out_dir)],
+        _env_without_ffmpeg(),
+    )
+    if code != 0 or not (out_dir / "Video_0_synced.mp4").is_file():
+        raise SystemExit(f"Started without a console, {executable.name} sync failed (exit code {code}).")
+    print("console-less start (double-click / drop on the executable): ok")
 
 
 def run(executable: Path, *args: str) -> str:

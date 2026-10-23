@@ -100,7 +100,9 @@ def probe_video(path: Path) -> VideoInfo:
         ffmpeg_binary(), "-hide_banner", "-nostdin", "-v", "error", "-i", str(path),
         "-map", "0:v:0", "-c", "copy", "-f", "framecrc", "-",
     ]  # fmt: skip
-    result = subprocess.run(command, capture_output=True, check=False, creationflags=_POPEN_FLAGS)
+    result = subprocess.run(
+        command, stdin=subprocess.DEVNULL, capture_output=True, check=False, creationflags=_POPEN_FLAGS
+    )
     if result.returncode != 0:
         message = result.stderr.decode(errors="replace").strip()
         raise FfmpegError(f"ffmpeg could not read the video stream of {path.name}: {message}")
