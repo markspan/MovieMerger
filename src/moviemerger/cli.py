@@ -29,7 +29,7 @@ from .pipeline import (
     match_videos,
 )
 from .timing import MarkerTiming
-from .video import EncoderSettings, FfmpegError
+from .video import EncoderSettings, FfmpegError, ffmpeg_binary
 from .xdf_streams import AudioStream, load_recording
 
 log = logging.getLogger("moviemerger")
@@ -51,7 +51,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="moviemerger", description=__doc__.split("\n\n")[0])
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("--version", action="version", version=_version_text())
     parser.add_argument("-v", "--verbose", action="store_true", help="show debug output, including ffmpeg commands")
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -73,6 +73,15 @@ def _parser() -> argparse.ArgumentParser:
     mosaic.add_argument("--no-labels", action="store_true", help="do not caption the tiles")
     mosaic.set_defaults(handler=_mosaic)
     return parser
+
+
+def _version_text() -> str:
+    """Version line, naming the ffmpeg in use (handy when checking an installation)."""
+    try:
+        ffmpeg = ffmpeg_binary()
+    except FfmpegError:
+        ffmpeg = "not found"
+    return f"%(prog)s {__version__} (ffmpeg: {ffmpeg})"
 
 
 def _add_common(parser: argparse.ArgumentParser) -> None:

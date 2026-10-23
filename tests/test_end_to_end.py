@@ -1,4 +1,4 @@
-"""Full pipeline on the synthetic recording described in conftest.py."""
+"""Full pipeline on the synthetic recording described in synthetic.py."""
 
 import threading
 
@@ -19,13 +19,8 @@ from moviemerger import (
 from moviemerger.cli import main as cli_main
 from moviemerger.mosaic import Layout
 
-from conftest import (
-    EVENT_TIME,
-    decode_audio,
-    decode_gray,
-    onset_seconds,
-    requires_ffmpeg,
-)
+from conftest import requires_ffmpeg
+from synthetic import EVENT_TIME, decode_audio, decode_gray, onset_seconds, tile_centre_crops
 
 pytestmark = requires_ffmpeg
 
@@ -81,12 +76,7 @@ def test_mosaic_aligns_all_cameras_with_audio(recording, tmp_path):
     layout = Layout.grid(2, 16 / 9, 320)
     sound = np.abs(decode_audio(output))
     beep = onset_seconds(sound, 8000, 0.3)
-    for tile in layout.tiles:
-        # Sample the tile centre, away from letterbox bars and compression edges.
-        # Even values: ffmpeg aligns yuv420p crops to two pixels.
-        crop = tuple(
-            v // 2 * 2 for v in (tile.x + tile.width // 4, tile.y + tile.height // 4, tile.width // 2, tile.height // 2)
-        )
+    for crop in tile_centre_crops(layout.tiles):
         flash = onset_seconds(decode_gray(output, layout.width, layout.height, crop), FPS, 150)
         assert flash == pytest.approx(beep, abs=TOLERANCE)
     assert beep == pytest.approx(EVENT_TIME - recording.frame_times_a[0], abs=0.005)

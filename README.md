@@ -36,8 +36,20 @@ happened together end up within one frame of each other in the output.
 
 ## Installation
 
-Requirements: Python 3.10+ and [ffmpeg](https://ffmpeg.org/download.html) (with `ffprobe`) on your `PATH`.
-Set `MOVIEMERGER_FFMPEG` / `MOVIEMERGER_FFPROBE` to use specific binaries instead.
+### Ready-made executables
+
+Download the archive for your system from the
+[Releases page](https://github.com/markspan/MovieMerger/releases): Windows (x64), macOS (Apple Silicon and
+Intel, macOS 12+) and Linux (x64, glibc 2.35+). Everything is included, ffmpeg too. One executable is both the
+desktop app (started without arguments) and the command-line tool (started with arguments). The release notes
+explain the one-time security prompt of each operating system.
+
+### From source
+
+Requirements: Python 3.10+. A static ffmpeg build (with H.264 and AAC encoders) comes with the
+[`imageio-ffmpeg`](https://pypi.org/project/imageio-ffmpeg/) dependency, so nothing else needs installing.
+Set `MOVIEMERGER_FFMPEG` to use a different ffmpeg; `ffmpeg` on `PATH` is the fallback on platforms
+`imageio-ffmpeg` has no build for.
 
 ```bash
 git clone https://github.com/markspan/MovieMerger.git
@@ -119,6 +131,29 @@ pip install -e ".[gui,test]"
 pytest
 ```
 
+### Building the executables
+
+Releases are compiled with [Nuitka](https://nuitka.net/) by the *Build and release* GitHub workflow
+(`.github/workflows/release.yml`). For each platform it compiles, runs `packaging/smoke_test.py` against
+the executable (with any system ffmpeg hidden, so the bundled one must work) and uploads the archive.
+Pushing a tag that matches `moviemerger.__version__` publishes them as a release:
+
+```bash
+git tag v2.0.0
+git push origin v2.0.0
+```
+
+To build locally for the current platform (needs a C compiler; Nuitka explains what it wants):
+
+```bash
+pip install -r packaging/requirements-build.txt
+pip install --no-deps .
+python packaging/build.py                 # -> dist/MovieMerger-<version>-<platform>.zip / .tar.gz
+python packaging/smoke_test.py build/MovieMerger/MovieMerger
+```
+
+`packaging/requirements-build.txt` pins every dependency of the release builds; bump it deliberately.
+
 Package layout (`src/moviemerger`):
 
 | Module | Responsibility |
@@ -126,7 +161,7 @@ Package layout (`src/moviemerger`):
 | `xdf_streams.py` | Find and load TimeShot marker streams and audio streams from an XDF file. |
 | `timing.py` | Frame clocks (frame number to LSL time), time spans, marker-timing diagnostics. |
 | `audio.py` | Resample audio onto the output timeline by timestamp. |
-| `video.py` | ffmpeg/ffprobe wrappers: probing, frame-accurate decoding, H.264/AAC encoding. |
+| `video.py` | ffmpeg wrappers: probing, frame-accurate decoding, H.264/AAC encoding. |
 | `mosaic.py` | Grid layout and tile captions. |
 | `pipeline.py` | Export jobs: stream matching, synced single videos, mosaics. |
 | `cli.py`, `gui.py` | Command line and PySide6 GUI. |

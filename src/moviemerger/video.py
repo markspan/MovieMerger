@@ -1,25 +1,32 @@
-"""Thin, explicit wrappers around the ffmpeg and ffprobe command-line tools.
+"""Thin, explicit wrappers around the ffmpeg command-line tool.
 
 Decoding and encoding run in ffmpeg subprocesses that exchange raw RGB24
 frames with Python through pipes. That keeps frame selection and compositing
 in plain numpy, where the timing logic is easy to verify, while ffmpeg does
 the codec work it is good at.
 
-The binaries are looked up on ``PATH``; set ``MOVIEMERGER_FFMPEG`` and
-``MOVIEMERGER_FFPROBE`` to use specific ones.
+Only the ``ffmpeg`` executable is needed (no ``ffprobe``). It is found, in
+order of preference, via:
+
+1. the ``MOVIEMERGER_FFMPEG`` environment variable;
+2. the static build shipped in the ``imageio-ffmpeg`` package, a dependency
+   of MovieMerger and the copy bundled into the compiled releases, known to
+   include the H.264 (libx264) and AAC encoders;
+3. ``ffmpeg`` on ``PATH``, for platforms ``imageio-ffmpeg`` has no build for.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
 import threading
 from collections import deque
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 import numpy as np
@@ -32,42 +39,41 @@ _STDERR_TAIL_LINES = 20
 # Prevents a console window flashing up per subprocess on Windows GUIs.
 _POPEN_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
+FFMPEG_ENV_VAR = "MOVIEMERGER_FFMPEG"
+
+# The header line in which ffmpeg's framecrc muxer reports a stream's size.
+_FRAMECRC_DIMENSIONS = re.compile(rb"^#dimensions \d+:\s*(\d+)x(\d+)", re.MULTILINE)
+
 
 class FfmpegError(RuntimeError):
-    """An ffmpeg or ffprobe invocation failed."""
+    """An ffmpeg invocation failed, or ffmpeg could not be found."""
 
 
+@cache
 def ffmpeg_binary() -> str:
-    """Path of the ffmpeg executable.
+    """Path of the ffmpeg executable (see the module docstring for the search order).
 
     Raises:
         FfmpegError: If ffmpeg cannot be found.
     """
-    return _binary("ffmpeg", "MOVIEMERGER_FFMPEG")
-
-
-def ffprobe_binary() -> str:
-    """Path of the ffprobe executable.
-
-    Raises:
-        FfmpegError: If ffprobe cannot be found.
-    """
-    return _binary("ffprobe", "MOVIEMERGER_FFPROBE")
-
-
-def _binary(name: str, env_var: str) -> str:
-    configured = os.environ.get(env_var)
+    configured = os.environ.get(FFMPEG_ENV_VAR)
     if configured:
         return configured
-    found = shutil.which(name)
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except (ImportError, RuntimeError) as error:
+        log.debug("No ffmpeg from imageio-ffmpeg (%s); trying PATH.", error)
+    found = shutil.which("ffmpeg")
     if found is None:
-        raise FfmpegError(f"{name} was not found. Install ffmpeg and put it on PATH, or set {env_var}.")
+        raise FfmpegError(f"ffmpeg was not found. Install imageio-ffmpeg or ffmpeg, or set {FFMPEG_ENV_VAR}.")
     return found
 
 
 @dataclass(frozen=True)
 class VideoInfo:
-    """Properties of a video file, as reported by ffprobe."""
+    """Properties of the first video stream of a file."""
 
     width: int
     height: int
@@ -81,29 +87,28 @@ class VideoInfo:
 def probe_video(path: Path) -> VideoInfo:
     """Read size and exact frame count of the first video stream in ``path``.
 
-    Packets are counted rather than trusting the container's frame count,
-    which AVI writers often get wrong. For the intra-only codecs TimeShot
-    writes (MJPEG) one packet is one frame.
+    The stream is copied, without decoding, into ffmpeg's ``framecrc``
+    muxer, which writes a header with the stream's dimensions and then one
+    line per packet. Counting packets is exact where the container's own
+    frame count is often wrong (AVI writers rarely update it), and for the
+    intra-only codecs TimeShot writes (MJPEG) one packet is one frame.
 
     Raises:
-        FfmpegError: If the file cannot be probed or has no video stream.
+        FfmpegError: If the file cannot be read or has no video stream.
     """
     command = [
-        ffprobe_binary(), "-v", "error", "-select_streams", "v:0", "-count_packets",
-        "-show_entries", "stream=width,height,nb_read_packets", "-of", "json", str(path),
+        ffmpeg_binary(), "-hide_banner", "-nostdin", "-v", "error", "-i", str(path),
+        "-map", "0:v:0", "-c", "copy", "-f", "framecrc", "-",
     ]  # fmt: skip
-    result = subprocess.run(command, capture_output=True, text=True, check=False, creationflags=_POPEN_FLAGS)
+    result = subprocess.run(command, capture_output=True, check=False, creationflags=_POPEN_FLAGS)
     if result.returncode != 0:
-        raise FfmpegError(f"ffprobe could not read {path.name}: {result.stderr.strip()}")
-    streams = json.loads(result.stdout or "{}").get("streams", [])
-    if not streams:
-        raise FfmpegError(f"{path.name} contains no video stream.")
-    stream = streams[0]
-    return VideoInfo(
-        width=int(stream["width"]),
-        height=int(stream["height"]),
-        frame_count=int(stream.get("nb_read_packets", 0)),
-    )
+        message = result.stderr.decode(errors="replace").strip()
+        raise FfmpegError(f"ffmpeg could not read the video stream of {path.name}: {message}")
+    size = _FRAMECRC_DIMENSIONS.search(result.stdout)
+    if size is None:
+        raise FfmpegError(f"{path.name} contains no video stream with known dimensions.")
+    packets = sum(1 for line in result.stdout.splitlines() if line and not line.startswith(b"#"))
+    return VideoInfo(width=int(size[1]), height=int(size[2]), frame_count=packets)
 
 
 class _Subprocess:
