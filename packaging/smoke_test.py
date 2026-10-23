@@ -99,12 +99,15 @@ def check_icon(executable: Path) -> None:
         raise SystemExit(f"The release lacks its icon {icon}")
 
 
-# Exit codes of the probe below: subprocess failed on the inherited invalid handles, or worked.
-_PROBE_HANDLE_INVALID, _PROBE_OK = 3, 0
+# Exit code of the probe below when subprocess fails on the inherited invalid handles.
+_PROBE_HANDLE_INVALID = 3
+# Redirects stdout/stderr and leaves stdin inherited, like imageio-ffmpeg's check of its ffmpeg:
+# subprocess only passes standard handles on (and trips over invalid ones) when at least one of
+# stdin/stdout/stderr is given.
 _PROBE = f"""
 import subprocess, sys
 try:
-    subprocess.run([sys.executable, "-c", "pass"], check=True)
+    subprocess.run([sys.executable, "-c", "pass"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, check=True)
 except OSError as error:
     sys.exit({_PROBE_HANDLE_INVALID} if getattr(error, "winerror", None) == 6 else 4)
 """
