@@ -50,6 +50,11 @@ def main() -> int:
         raise SystemExit(__doc__)
     executable = Path(sys.argv[1]).resolve()
 
+    # The GUI renders its window icon from this package data file.
+    icon = executable.parent / "moviemerger" / "resources" / "moviemerger.svg"
+    if not icon.is_file():
+        raise SystemExit(f"The release lacks the icon resource {icon}")
+
     with tempfile.TemporaryDirectory(prefix="moviemerger-smoke-") as scratch:
         folder = Path(scratch)
         recording = build_recording(folder)

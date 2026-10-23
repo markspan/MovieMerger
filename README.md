@@ -1,4 +1,4 @@
-# MovieMerger
+# <img src="src/moviemerger/resources/moviemerger.svg" alt="" width="48" align="top"> MovieMerger
 
 Synchronise videos recorded with **[TimeShot](https://github.com/markspan/TimeShot)** with the scene audio
 in a LabRecorder `.xdf` file, using LabStreamingLayer timestamps as the ground truth.
@@ -165,6 +165,7 @@ Package layout (`src/moviemerger`):
 | `mosaic.py` | Grid layout and tile captions. |
 | `pipeline.py` | Export jobs: stream matching, synced single videos, mosaics. |
 | `cli.py`, `gui.py` | Command line and PySide6 GUI. |
+| `resources/moviemerger.svg` | The app icon (master image; the build renders `.ico`/`.icns` from it). |
 
 ## License
 

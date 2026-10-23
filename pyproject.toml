@@ -30,6 +30,9 @@ moviemerger-gui = "moviemerger.gui:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+moviemerger = ["resources/*.svg"]
+
 [tool.setuptools.dynamic]
 version = { attr = "moviemerger.__version__" }
 

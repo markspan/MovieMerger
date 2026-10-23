@@ -15,11 +15,13 @@ import sys
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, QSettings, Qt, QThread, Signal, Slot
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
+from PySide6.QtCore import QByteArray, QObject, QSettings, Qt, QThread, Signal, Slot
+from PySide6.QtGui import QDragEnterEvent, QDropEvent, QIcon, QImage, QPainter, QPixmap
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -65,6 +67,8 @@ log = logging.getLogger("moviemerger")
 
 VIDEO_SUFFIXES = {".avi", ".mp4", ".mkv", ".mov", ".m4v", ".wmv"}
 VIDEO_FILTER = "Videos (" + " ".join(f"*{s}" for s in sorted(VIDEO_SUFFIXES)) + ");;All files (*)"
+APP_ID = "nl.rug.moviemerger"
+ICON_RESOURCE = ("resources", "moviemerger.svg")
 NO_STREAM = "(not paired)"
 NO_AUDIO = "(no audio)"
 
@@ -574,10 +578,37 @@ def _milliseconds_spin(tooltip: str) -> QDoubleSpinBox:
     return spin
 
 
+def app_icon(sizes: tuple[int, ...] = (16, 24, 32, 48, 64, 128, 256)) -> QIcon:
+    """The MovieMerger icon, rendered from the SVG shipped inside the package.
+
+    The SVG is rendered into pixmaps from its bytes rather than handed to Qt
+    as a file, so the icon works the same from a regular install, a zipped
+    one or the compiled release, without relying on Qt's SVG icon plugin.
+    """
+    svg = resources.files(__package__).joinpath(*ICON_RESOURCE).read_bytes()
+    renderer = QSvgRenderer(QByteArray(svg))
+    icon = QIcon()
+    for size in sizes:
+        image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        renderer.render(painter)
+        painter.end()
+        icon.addPixmap(QPixmap.fromImage(image))
+    return icon
+
+
 def main() -> int:
     """Start the GUI; returns the application's exit code."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    if sys.platform == "win32":
+        import ctypes
+
+        # Give the taskbar button MovieMerger's icon instead of Python's when run from source.
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
     app = QApplication.instance() or QApplication(sys.argv)
+    app.setWindowIcon(app_icon())
     window = MainWindow()
     window.show()
     return app.exec()

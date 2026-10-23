@@ -14,6 +14,8 @@ Steps:
    configuration bundles the static ffmpeg executable of ``imageio-ffmpeg``,
    so the release needs nothing installed on the user's machine (the smoke
    test verifies this).
+   The icon is rendered from the package's SVG into ``.ico``/``.icns``
+   first (see ``packaging/icons.py``).
 2. Name the result ``MovieMerger`` and add the license notices.
 3. On macOS, ad-hoc sign every binary and then the bundle (Apple Silicon
    refuses to run unsigned code; this is not a notarised Developer ID).
@@ -35,6 +37,8 @@ import sys
 import sysconfig
 from dataclasses import dataclass
 from pathlib import Path
+
+from icons import IconFiles, render_icons
 
 import moviemerger
 
@@ -83,8 +87,9 @@ def main() -> int:
     print(f"Building {APP_NAME} {version} for {target.tag}", flush=True)
 
     shutil.rmtree(args.build_dir, ignore_errors=True)
+    icons = render_icons(args.build_dir / "icons")
     try:
-        subprocess.run(nuitka_command(target, version, args.build_dir), env=_tool_env(), check=True)
+        subprocess.run(nuitka_command(target, version, args.build_dir, icons), env=_tool_env(), check=True)
     except subprocess.CalledProcessError as error:
         raise SystemExit(f"Nuitka failed with exit code {error.returncode}; see its output above.") from None
 
@@ -101,13 +106,15 @@ def main() -> int:
     return 0
 
 
-def nuitka_command(target: Target, version: str, build_dir: Path) -> list[str]:
+def nuitka_command(target: Target, version: str, build_dir: Path, icons: IconFiles) -> list[str]:
     """The Nuitka invocation for ``target``."""
     command = [
         sys.executable, "-m", "nuitka",
         # A standalone folder on Windows and Linux, an app bundle on macOS.
         "--mode=app-dist",
         "--enable-plugin=pyside6",
+        # The SVG the GUI renders its window icon from.
+        "--include-package-data=moviemerger",
         f"--output-dir={build_dir}",
         f"--output-folder-name={APP_NAME}",
         f"--output-filename={APP_NAME}",
@@ -119,6 +126,7 @@ def nuitka_command(target: Target, version: str, build_dir: Path) -> list[str]:
             # No console window when double-clicked, but CLI output still
             # appears when started from a terminal.
             "--windows-console-mode=attach",
+            f"--windows-icon-from-ico={icons.ico}",
             "--company-name=Mark Span",
             f"--product-name={APP_NAME}",
             f"--file-version={version}",
@@ -129,6 +137,7 @@ def nuitka_command(target: Target, version: str, build_dir: Path) -> list[str]:
     elif target.system == "macos":
         command += [
             f"--macos-app-name={APP_NAME}",
+            f"--macos-app-icon={icons.icns}",
             f"--macos-app-version={version}",
             f"--macos-signed-app-name={BUNDLE_ID}",
         ]
