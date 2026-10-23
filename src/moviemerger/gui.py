@@ -584,8 +584,15 @@ def app_icon(sizes: tuple[int, ...] = (16, 24, 32, 48, 64, 128, 256)) -> QIcon:
     The SVG is rendered into pixmaps from its bytes rather than handed to Qt
     as a file, so the icon works the same from a regular install, a zipped
     one or the compiled release, without relying on Qt's SVG icon plugin.
+
+    Returns:
+        The icon, or a null icon in the macOS release, which leaves the SVG
+        out and lets the app bundle's own icon serve (see packaging/build.py).
     """
-    svg = resources.files(__package__).joinpath(*ICON_RESOURCE).read_bytes()
+    try:
+        svg = resources.files(__package__).joinpath(*ICON_RESOURCE).read_bytes()
+    except FileNotFoundError:
+        return QIcon()
     renderer = QSvgRenderer(QByteArray(svg))
     icon = QIcon()
     for size in sizes:
@@ -608,7 +615,9 @@ def main() -> int:
         # Give the taskbar button MovieMerger's icon instead of Python's when run from source.
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setWindowIcon(app_icon())
+    icon = app_icon()
+    if not icon.isNull():
+        app.setWindowIcon(icon)
     window = MainWindow()
     window.show()
     return app.exec()

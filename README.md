@@ -26,9 +26,9 @@ MovieMerger uses that information directly:
 * **Audio.** Samples are placed by their own (dejittered) XDF timestamps rather than by counting samples from
   the start. This corrects for an audio clock that runs slightly fast or slow, and turns dropouts into
   silence instead of shifting everything after them.
-* **Latency.** LSL timestamps record when a sample was *pushed*, which is somewhat later than when it was
-  captured (see [Timestamp accuracy](#timestamp-accuracy)). Each camera and the audio have a latency
-  setting (milliseconds, positive = move earlier) to compensate for a constant offset.
+* **Timestamps as recorded.** The LSL timestamps are used as they are, so they should be calibrated at the
+  source to mark the moment of capture. The latency settings exist only for recordings whose timestamps are
+  not calibrated; with calibrated timestamps leave them at 0 (see [Timestamp accuracy](#timestamp-accuracy)).
 
 The test suite builds a deliberately hostile recording (irregular frames with a stall, a second camera that
 starts later at another rate, an audio clock 1 % fast with a dropout) and checks that a flash and a beep that
@@ -39,8 +39,8 @@ happened together end up within one frame of each other in the output.
 ### Ready-made executables
 
 Download the archive for your system from the
-[Releases page](https://github.com/markspan/MovieMerger/releases): Windows (x64), macOS (Apple Silicon and
-Intel, macOS 12+) and Linux (x64, glibc 2.35+). Everything is included, ffmpeg too. One executable is both the
+[Releases page](https://github.com/markspan/MovieMerger/releases): Windows (x64), macOS 12+ (Intel; Apple
+Silicon Macs run it through Rosetta 2) and Linux (x64, glibc 2.35+). Everything is included, ffmpeg too. One executable is both the
 desktop app (started without arguments) and the command-line tool (started with arguments). The release notes
 explain the one-time security prompt of each operating system.
 
@@ -67,8 +67,9 @@ moviemerger-gui          # or: python -m moviemerger
 2. **Add videos…** (or drag `.xdf` and video files onto the window). Each video is paired with its
    TimeShot marker stream automatically: by the file name TimeShot recorded, then by stream or camera name,
    then in order. Change a pairing with the drop-down in the table if needed.
-3. Optionally set a mosaic label and a latency per camera, the audio latency, the frame rate (Auto picks
-   the fastest camera's typical rate), the time span, quality and mosaic size.
+3. Optionally set a mosaic label per camera, the frame rate (Auto picks the fastest camera's typical rate),
+   the time span, quality and mosaic size. Leave the *Latency (ms)* column and the *Audio latency* field at 0
+   when your timestamps are calibrated; see [Timestamp accuracy](#timestamp-accuracy).
 4. Click **Export synced videos** (writes `<video>_synced.mp4` per camera) or **Export mosaic…**.
 
 The table order is the mosaic order, left to right and top to bottom. Exports run in the background and can
@@ -95,7 +96,7 @@ Common options:
 | `--audio STREAM` / `--no-audio` | Choose the audio stream, or retime the video only. |
 | `--fps N` | Output frame rate (default: the fastest camera's typical rate). |
 | `--span union\|overlap` | Keep everything (gaps become black/silence), or only the time all streams recorded. |
-| `--video-latency MS`, `--audio-latency MS` | Constant offsets to compensate, positive = move earlier. |
+| `--video-latency MS`, `--audio-latency MS` | Only for uncalibrated timestamps: a constant lag to remove, positive = earlier (default 0). |
 | `--crf N` | x264 quality, lower is better (default 18). |
 
 Mosaic only: `--width`, `--columns`, `--no-labels`. Sync only: `--out-dir`, `--suffix`.
@@ -108,16 +109,28 @@ python MovieMerger.py video.avi recording.xdf [video_stream_name] [audio_stream_
 
 ## Timestamp accuracy
 
-TimeShot calls `push_sample` without a timestamp, so LSL stamps each frame when the marker is pushed. In
-TimeShot's capture loop that happens after `capture.Read()` returned the frame, the frame number was drawn
-and the frame was MJPEG-encoded and written to disk. A marker therefore lags the actual exposure by:
+MovieMerger places every frame and every audio sample exactly at its LSL timestamp, so the result is as
+accurate as those timestamps. With timestamps calibrated at the source to mark the moment of capture, there
+is nothing to adjust.
+
+Uncalibrated timestamps lag. A TimeShot build that calls `push_sample` without a timestamp has LSL stamp each
+frame when the marker is pushed: after `capture.Read()` returned the frame, the frame number was drawn and the
+frame was MJPEG-encoded and written to disk. Such a marker lags the exposure by
 
 * a roughly **constant** part: the camera and USB/driver pipeline (typically tens of milliseconds), and
 * a **variable** part: drawing, encoding and disk I/O for that frame (milliseconds, varying per frame).
 
-The constant part also applies to the audio (buffering in the sound card and the sender), with a different
-value. Because only the *difference* matters, calibrate it once per setup: record a clap or a clapperboard
-visible to every camera, export, and adjust the latency settings until picture and sound coincide.
+Audio senders lag by their own constant buffering delay. The constant parts can be removed afterwards; the
+variable part cannot. That is what the latency settings are for:
+
+| GUI | Command line | Meaning |
+| --- | --- | --- |
+| *Latency (ms)* column, per camera | `--video-latency MS` (all cameras) | How much that camera's frame markers lag the capture. |
+| *Audio latency* field | `--audio-latency MS` | How much the audio timestamps lag the sound. |
+
+Values are in milliseconds; a positive value moves that stream earlier, and 0 (the default) uses the timestamps
+unchanged. Only the difference between picture and sound is visible, so measure it once per setup: record a
+clap that every camera can see, export, and adjust until picture and sound coincide.
 
 If TimeShot's loop cannot keep up with the camera, frames queue in the driver's buffer and are then read, and
 stamped, in quick bursts; their markers no longer reflect when they were captured. MovieMerger checks for this:

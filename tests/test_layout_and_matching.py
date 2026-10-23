@@ -24,11 +24,17 @@ def test_grid_respects_columns():
     assert layout.height == layout.tiles[0].height
 
 
-def test_label_blends_inside_tile():
-    layout = Layout.single(64, 48)
-    canvas = np.zeros((48, 64, 3), np.uint8)
-    Label.render("Cam", layout.tiles[0].height).draw(canvas, layout.tiles[0])
-    assert canvas.max() > 0
+def test_label_sits_in_the_top_right_corner():
+    # Two tiles side by side; the caption belongs to the left one.
+    layout = Layout.grid(2, 4 / 3, 640)
+    canvas = np.zeros((layout.height, layout.width, 3), np.uint8)
+    tile = layout.tiles[0]
+    Label.render("Cam", tile.height).draw(canvas, tile)
+    ys, xs = np.nonzero(canvas.any(axis=2))
+    assert xs.size, "nothing drawn"
+    assert xs.min() > tile.x + tile.width // 2, "caption must hug the right edge (TimeShot draws top left)"
+    assert xs.max() < tile.x + tile.width, "caption must stay inside its own tile"
+    assert ys.max() < tile.y + tile.height // 4, "caption must sit at the top"
 
 
 def test_match_by_advertised_file_then_name_then_order():

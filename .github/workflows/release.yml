@@ -1,6 +1,6 @@
 # Builds standalone MovieMerger executables with Nuitka for Windows, Linux and
-# macOS (Apple Silicon and Intel), smoke-tests each one, and publishes them as
-# a GitHub release. Two ways to release:
+# macOS (Intel; Apple Silicon Macs run it through Rosetta 2), smoke-tests each
+# one, and publishes them as a GitHub release. Two ways to release:
 #
 # * Actions tab > "Build and release" > Run workflow, with "publish" ticked:
 #   tags the selected branch as v<moviemerger.__version__> and releases it.
@@ -74,8 +74,6 @@ jobs:
           # The oldest supported runner: the binary needs the build host's glibc or newer.
           - name: linux-x64
             os: ubuntu-22.04
-          - name: macos-arm64
-            os: macos-14
           - name: macos-x64
             os: macos-15-intel
     runs-on: ${{ matrix.os }}

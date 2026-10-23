@@ -90,13 +90,17 @@ class Label:
         return cls(rgb=pixels[..., :3], alpha=pixels[..., 3:] / 255.0)
 
     def draw(self, canvas: np.ndarray, tile: Tile) -> None:
-        """Blend this label into the top-left corner of ``tile`` on ``canvas``."""
+        """Blend this label into the top-right corner of ``tile`` on ``canvas``.
+
+        Top right, because TimeShot burns the frame number into the top-left
+        corner of every frame and a caption there would hide it.
+        """
         margin = max(2, tile.height // 60)
         h = min(self.rgb.shape[0], tile.height - margin)
         w = min(self.rgb.shape[1], tile.width - margin)
         if h <= 0 or w <= 0:
             return
-        y, x = tile.y + margin, tile.x + margin
+        y, x = tile.y + margin, tile.x + tile.width - margin - w
         region = canvas[y : y + h, x : x + w].astype(np.float32)
         alpha = self.alpha[:h, :w]
         canvas[y : y + h, x : x + w] = (region * (1 - alpha) + self.rgb[:h, :w] * alpha).astype(np.uint8)

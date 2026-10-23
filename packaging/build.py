@@ -113,14 +113,18 @@ def nuitka_command(target: Target, version: str, build_dir: Path, icons: IconFil
         # A standalone folder on Windows and Linux, an app bundle on macOS.
         "--mode=app-dist",
         "--enable-plugin=pyside6",
-        # The SVG the GUI renders its window icon from.
-        "--include-package-data=moviemerger",
         f"--output-dir={build_dir}",
         f"--output-folder-name={APP_NAME}",
         f"--output-filename={APP_NAME}",
         f"--report={build_dir / 'compilation-report.xml'}",
         "--assume-yes-for-downloads",
     ]  # fmt: skip
+    if target.system != "macos":
+        # The SVG the GUI renders its window icon from. Not on macOS: there the
+        # folder "moviemerger" would sit next to the executable "MovieMerger"
+        # in Contents/MacOS, which the case-insensitive file system refuses;
+        # the bundle's .icns provides the same icon to the Dock instead.
+        command.append("--include-package-data=moviemerger")
     if target.system == "windows":
         command += [
             # No console window when double-clicked, but CLI output still

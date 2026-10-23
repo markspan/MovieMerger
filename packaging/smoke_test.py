@@ -18,6 +18,7 @@ decoding the outputs), not just the compiled release.
 from __future__ import annotations
 
 import os
+import plistlib
 import subprocess
 import sys
 import tempfile
@@ -50,10 +51,7 @@ def main() -> int:
         raise SystemExit(__doc__)
     executable = Path(sys.argv[1]).resolve()
 
-    # The GUI renders its window icon from this package data file.
-    icon = executable.parent / "moviemerger" / "resources" / "moviemerger.svg"
-    if not icon.is_file():
-        raise SystemExit(f"The release lacks the icon resource {icon}")
+    check_icon(executable)
 
     with tempfile.TemporaryDirectory(prefix="moviemerger-smoke-") as scratch:
         folder = Path(scratch)
@@ -83,6 +81,19 @@ def main() -> int:
 
     print("Smoke test passed.")
     return 0
+
+
+def check_icon(executable: Path) -> None:
+    """The release must carry its icon: the app bundle's .icns on macOS, else the GUI's SVG."""
+    if sys.platform == "darwin":
+        contents = executable.parent.parent
+        with open(contents / "Info.plist", "rb") as plist:
+            icon_file = plistlib.load(plist).get("CFBundleIconFile", "")
+        icon = contents / "Resources" / (icon_file if icon_file.endswith(".icns") else f"{icon_file}.icns")
+    else:
+        icon = executable.parent / "moviemerger" / "resources" / "moviemerger.svg"
+    if not icon.is_file() or icon.stat().st_size == 0:
+        raise SystemExit(f"The release lacks its icon {icon}")
 
 
 def run(executable: Path, *args: str) -> str:

@@ -3,8 +3,7 @@
 | Platform | File |
 | --- | --- |
 | Windows 10/11 (64-bit) | `MovieMerger-<version>-windows-x64.zip` |
-| macOS 12+ on Apple Silicon | `MovieMerger-<version>-macos-arm64.zip` |
-| macOS 12+ on Intel | `MovieMerger-<version>-macos-x64.zip` |
+| macOS 12+ (Intel; Apple Silicon Macs run it through Rosetta 2) | `MovieMerger-<version>-macos-x64.zip` |
 | Linux x86-64 (glibc 2.35+, e.g. Ubuntu 22.04+, Debian 12+) | `MovieMerger-<version>-linux-x64.tar.gz` |
 
 Everything is included, ffmpeg too: nothing else needs installing. One executable is both the desktop app
