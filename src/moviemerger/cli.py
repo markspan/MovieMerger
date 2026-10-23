@@ -20,6 +20,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from . import __version__
+from ._windows import repair_standard_handles
 from .pipeline import (
     RenderOptions,
     SpanMode,
@@ -37,6 +38,7 @@ log = logging.getLogger("moviemerger")
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI; returns the process exit code."""
+    repair_standard_handles()
     args = _parser().parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s: %(message)s")
     try:
@@ -176,6 +178,8 @@ def _split_pair(item: str) -> tuple[str, str]:
 
 
 def _console_progress(fraction: float, message: str) -> None:
+    if sys.stdout is None:  # started without a console, e.g. by a file dropped on the compiled app
+        return
     sys.stdout.write(f"\r[{fraction * 100:5.1f}%] {message:<60}")
     sys.stdout.flush()
 
