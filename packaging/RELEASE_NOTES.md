@@ -25,5 +25,4 @@ The builds are not signed with a paid developer certificate, so the operating sy
   X11 cursor library: `sudo apt install libxcb-cursor0` (Debian/Ubuntu) or `sudo dnf install xcb-util-cursor`
   (Fedora).
 
-See [THIRD-PARTY-NOTICES.txt](https://github.com/markspan/MovieMerger/blob/main/packaging/THIRD-PARTY-NOTICES.txt)
-for the licenses of the bundled software.
+Every archive contains `LICENSE.txt` and `THIRD-PARTY-NOTICES.txt` with the licenses of the bundled software.
