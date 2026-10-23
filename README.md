@@ -11,6 +11,11 @@ MovieMerger produces:
 
 Both are available from a desktop GUI and from the command line.
 
+<p align="center">
+  <img src="docs/screenshot.png" width="800"
+       alt="The MovieMerger window: an XDF recording with three cameras and a microphone, the videos paired with their marker streams, and a finished mosaic export">
+</p>
+
 ## How synchronisation works
 
 TimeShot writes each camera to an MJPEG `.avi` file and, for every frame it writes, pushes an LSL marker whose
