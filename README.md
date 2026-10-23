@@ -136,7 +136,8 @@ pytest
 Releases are compiled with [Nuitka](https://nuitka.net/) by the *Build and release* GitHub workflow
 (`.github/workflows/release.yml`). For each platform it compiles, runs `packaging/smoke_test.py` against
 the executable (with any system ffmpeg hidden, so the bundled one must work) and uploads the archive.
-Pushing a tag that matches `moviemerger.__version__` publishes them as a release:
+To publish a release, either run the workflow from the *Actions* tab with *publish* ticked (it tags the
+selected branch as `v<moviemerger.__version__>`), or push a tag matching that version yourself:
 
 ```bash
 git tag v2.0.0

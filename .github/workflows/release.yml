@@ -1,12 +1,15 @@
 # Builds standalone MovieMerger executables with Nuitka for Windows, Linux and
 # macOS (Apple Silicon and Intel), smoke-tests each one, and publishes them as
-# a GitHub release when a version tag is pushed:
+# a GitHub release. Two ways to release:
 #
-#     git tag v2.0.0 && git push origin v2.0.0
+# * Actions tab > "Build and release" > Run workflow, with "publish" ticked:
+#   tags the selected branch as v<moviemerger.__version__> and releases it.
+# * Push a version tag yourself; it must match moviemerger.__version__:
 #
-# The tag must match moviemerger.__version__. Run the workflow manually from
-# the Actions tab (or open a pull request touching the packaging) to build and
-# test without releasing; the archives are then kept as workflow artifacts.
+#       git tag v2.0.0 && git push origin v2.0.0
+#
+# Without "publish" (or for a pull request touching the packaging) the
+# workflow only builds and tests; the archives are kept as workflow artifacts.
 
 name: Build and release
 
@@ -19,6 +22,11 @@ on:
       - "packaging/**"
       - "pyproject.toml"
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish a release tagged v<package version> from the selected branch"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -116,13 +124,29 @@ jobs:
 
   release:
     name: Publish release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v5
+      - name: Determine the release tag
+        id: tag
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/moviemerger/__init__.py)
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag="v$version"
+            # Never move or overwrite an existing release from a manual run.
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
+              echo "::error::Tag $tag already exists. Bump __version__ in src/moviemerger/__init__.py to release again."
+              exit 1
+            fi
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Download archives
         uses: actions/download-artifact@v4
         with:
@@ -132,6 +156,9 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: MovieMerger ${{ steps.tag.outputs.version }}
           files: release/*
           body_path: packaging/RELEASE_NOTES.md
           generate_release_notes: true
