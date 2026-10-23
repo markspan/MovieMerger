@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moviemerger"
+version = "2.0.0"
+description = "Synchronise LSL-timestamped videos (TimeShot) with XDF audio, per video or as a mosaic."
+readme = "README.md"
+license = { text = "GPL-2.0-only" }
+authors = [{ name = "Mark Span", email = "m.m.span@rug.nl" }]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pyxdf>=1.16",
+    "Pillow>=10.1",
+]
+
+[project.optional-dependencies]
+gui = ["PySide6>=6.5"]
+test = ["pytest>=7"]
+
+[project.scripts]
+moviemerger = "moviemerger.cli:main"
+
+[project.gui-scripts]
+moviemerger-gui = "moviemerger.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["moviemerger"]
+known-local-folder = ["conftest", "xdf_writer"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]

@@ -1,66 +1,140 @@
-# XDF Audio + MP4 Video Synchronizer
+# MovieMerger
 
-Synchronize and merge an MP4 video file with audio data from an XDF file using precise timestamp alignment.  
-Designed for use with **TimeShot** (video recording) and **AudioStream** (audio-to-LSL), this tool lets you reconstruct fully synchronized audiovisual data from co-recorded sources.
+Synchronise videos recorded with **[TimeShot](https://github.com/markspan/TimeShot)** with the scene audio
+in a LabRecorder `.xdf` file, using LabStreamingLayer timestamps as the ground truth.
 
-## Why Use This?
+MovieMerger produces:
 
-In multimodal experiments, you may:
+1. **One synchronised video per camera**: each video retimed by its own LSL frame markers, with the audio
+   from the XDF file placed sample-accurately underneath it.
+2. **A mosaic** of all cameras in one picture, with the same synchronised audio.
 
-- Record video using **TimeShot**, which embeds precise LSL timestamps.
-- Record microphone audio using **AudioStream**, a simple app that streams live audio into the LSL network.
-- Save all LSL streams (including audio and timestamps) into an `.xdf` file using LabRecorder.
+Both are available from a desktop GUI and from the command line.
 
-This script ensures the audio and video are perfectly aligned by:
+## How synchronisation works
 
-- Using LSL/XDF timestamps as the ground truth.
-- Finding the overlapping time range between audio and video.
-- Trimming and synchronizing both streams using linear interpolation (to handle clock drift or offset).
+TimeShot writes each camera to an MJPEG `.avi` file and, for every frame it writes, pushes an LSL marker whose
+payload is that frame's index. LabRecorder stores those markers next to the audio stream (for example from
+AudioStream) in one `.xdf` file, all on a common clock.
 
-## How to Use
+MovieMerger uses that information directly:
 
-### Requirements
+* **Video.** The frame rate stored in the `.avi` is only TimeShot's estimate at start-up; webcams deliver
+  frames irregularly and occasionally stall. Every frame is therefore placed at the time of its own marker.
+  The output has a constant frame rate, and each output frame shows the most recent camera frame captured at
+  or before that moment. Frames recorded while LabRecorder was not running have no marker and are left out.
+* **Audio.** Samples are placed by their own (dejittered) XDF timestamps rather than by counting samples from
+  the start. This corrects for an audio clock that runs slightly fast or slow, and turns dropouts into
+  silence instead of shifting everything after them.
+* **Latency.** LSL timestamps record when a sample was *pushed*, which is somewhat later than when it was
+  captured (see [Timestamp accuracy](#timestamp-accuracy)). Each camera and the audio have a latency
+  setting (milliseconds, positive = move earlier) to compensate for a constant offset.
 
-- Python 3.7+
-- `ffmpeg` (must be installed and in your system's PATH)
-- Python packages: `numpy`, `soundfile`, `ffmpeg-python`, `pyxdf`
+The test suite builds a deliberately hostile recording (irregular frames with a stall, a second camera that
+starts later at another rate, an audio clock 1 % fast with a dropout) and checks that a flash and a beep that
+happened together end up within one frame of each other in the output.
 
-Install dependencies:
+## Installation
+
+Requirements: Python 3.10+ and [ffmpeg](https://ffmpeg.org/download.html) (with `ffprobe`) on your `PATH`.
+Set `MOVIEMERGER_FFMPEG` / `MOVIEMERGER_FFPROBE` to use specific binaries instead.
 
 ```bash
-pip install numpy soundfile ffmpeg-python pyxdf
+git clone https://github.com/markspan/MovieMerger.git
+cd MovieMerger
+pip install ".[gui]"
 ```
 
-### Usage
+## The GUI
 
 ```bash
-python moviemerger.py video.mp4 recording.xdf [video_stream_name] [audio_stream_name]
+moviemerger-gui          # or: python -m moviemerger
 ```
 
-- `video.mp4`: Your video file, ideally recorded using **TimeShot**.
-- `recording.xdf`: The XDF file saved from LabRecorder, containing LSL streams from **AudioStream**, TimeShot, and any other sensors.
-- `video_stream_name` (optional): Name of the stream containing video frame timestamps (defaults to first stream starting with `'Cam'`).
-- `audio_stream_name` (optional): Name of the stream containing audio (defaults to first stream of type `'Audio'`).
+1. **Open XDF…** and choose the LabRecorder recording. The audio stream list fills in.
+2. **Add videos…** (or drag `.xdf` and video files onto the window). Each video is paired with its
+   TimeShot marker stream automatically: by the file name TimeShot recorded, then by stream or camera name,
+   then in order. Change a pairing with the drop-down in the table if needed.
+3. Optionally set a mosaic label and a latency per camera, the audio latency, the frame rate (Auto picks
+   the fastest camera's typical rate), the time span, quality and mosaic size.
+4. Click **Export synced videos** (writes `<video>_synced.mp4` per camera) or **Export mosaic…**.
 
-### Output
+The table order is the mosaic order, left to right and top to bottom. Exports run in the background and can
+be cancelled; an incomplete file is removed.
 
-Produces a new video file:
+## The command line
 
+```bash
+# What is in the recording, including a frame-timing check per camera
+moviemerger streams session.xdf
+
+# One synchronised video per camera
+moviemerger sync session.xdf Video_0.avi Video_1.avi --out-dir synced
+
+# A 2-column mosaic, 1920 px wide
+moviemerger mosaic session.xdf Video_*.avi -o mosaic.mp4 --columns 2
 ```
-video_synced.mp4
+
+Common options:
+
+| Option | Meaning |
+| --- | --- |
+| `--stream FILE=STREAM` | Pair a video with a marker stream explicitly (repeatable). |
+| `--audio STREAM` / `--no-audio` | Choose the audio stream, or retime the video only. |
+| `--fps N` | Output frame rate (default: the fastest camera's typical rate). |
+| `--span union\|overlap` | Keep everything (gaps become black/silence), or only the time all streams recorded. |
+| `--video-latency MS`, `--audio-latency MS` | Constant offsets to compensate, positive = move earlier. |
+| `--crf N` | x264 quality, lower is better (default 18). |
+
+Mosaic only: `--width`, `--columns`, `--no-labels`. Sync only: `--out-dir`, `--suffix`.
+
+The original invocation still works:
+
+```bash
+python MovieMerger.py video.avi recording.xdf [video_stream_name] [audio_stream_name]
 ```
 
-This file contains the original video and the precisely synchronized and trimmed audio.
+## Timestamp accuracy
 
-## When to Use
+TimeShot calls `push_sample` without a timestamp, so LSL stamps each frame when the marker is pushed. In
+TimeShot's capture loop that happens after `capture.Read()` returned the frame, the frame number was drawn
+and the frame was MJPEG-encoded and written to disk. A marker therefore lags the actual exposure by:
 
-- When you record video and audio separately, but synchronize them via LSL.
-- When using **TimeShot** for high-fidelity, timestamped video.
-- When using **AudioStream** to send live audio into the LSL network.
-- When you need accurate, reproducible AV data for behavioral research, human-computer interaction, or cognitive experiments.
+* a roughly **constant** part: the camera and USB/driver pipeline (typically tens of milliseconds), and
+* a **variable** part: drawing, encoding and disk I/O for that frame (milliseconds, varying per frame).
 
----
+The constant part also applies to the audio (buffering in the sound card and the sender), with a different
+value. Because only the *difference* matters, calibrate it once per setup: record a clap or a clapperboard
+visible to every camera, export, and adjust the latency settings until picture and sound coincide.
 
-**TimeShot**: Open-source, low-latency video capture with LSL timestamps.  
-**AudioStream**: A lightweight app that streams mic input into LSL.  
-**This Script**: Synchronize them into one timeline, perfectly aligned.
+If TimeShot's loop cannot keep up with the camera, frames queue in the driver's buffer and are then read, and
+stamped, in quick bursts; their markers no longer reflect when they were captured. MovieMerger checks for this:
+`moviemerger streams` and every export log each camera's frame-interval statistics and warn when a noticeable
+share of frames was burst-read.
+
+## Development
+
+```bash
+pip install -e ".[gui,test]"
+pytest
+```
+
+Package layout (`src/moviemerger`):
+
+| Module | Responsibility |
+| --- | --- |
+| `xdf_streams.py` | Find and load TimeShot marker streams and audio streams from an XDF file. |
+| `timing.py` | Frame clocks (frame number to LSL time), time spans, marker-timing diagnostics. |
+| `audio.py` | Resample audio onto the output timeline by timestamp. |
+| `video.py` | ffmpeg/ffprobe wrappers: probing, frame-accurate decoding, H.264/AAC encoding. |
+| `mosaic.py` | Grid layout and tile captions. |
+| `pipeline.py` | Export jobs: stream matching, synced single videos, mosaics. |
+| `cli.py`, `gui.py` | Command line and PySide6 GUI. |
+
+## License
+
+[GPL-2.0-only](LICENSE)
+
+## Author
+
+**Mark Span** ([@markspan](https://github.com/markspan))
