@@ -69,7 +69,7 @@ def main() -> int:
         expect_close("sync: beep position", beep, EVENT_TIME - recording.frame_times_a[0], 0.005)
 
         if sys.platform == "win32":
-            check_console_less_start(executable, recording, folder / "console-less")
+            check_invalid_standard_handles()
 
         mosaic = folder / "mosaic.mp4"
         run(executable, "mosaic", str(recording.xdf), *videos, "--fps", "25", "--width", "320", "-o", str(mosaic))
@@ -99,40 +99,47 @@ def check_icon(executable: Path) -> None:
         raise SystemExit(f"The release lacks its icon {icon}")
 
 
-# Exit code of the probe below when subprocess fails on the inherited invalid handles.
-_PROBE_HANDLE_INVALID = 3
-# Redirects stdout/stderr and leaves stdin inherited, like imageio-ffmpeg's check of its ffmpeg:
-# subprocess only passes standard handles on (and trips over invalid ones) when at least one of
-# stdin/stdout/stderr is given.
-_PROBE = f"""
-import subprocess, sys
-try:
+# Runs in a fresh Python with the installed moviemerger package. It gives its standard input a
+# stale handle value, as a start without a console can leave behind, and shows that starting a
+# program then fails exactly as it did in the compiled app; repair_standard_handles() must cure it.
+# stdout/stderr are redirected like imageio-ffmpeg's ffmpeg check does: subprocess only passes
+# standard handles on (and trips over invalid ones) when at least one of the three is given.
+_INVALID_HANDLE_CHECK = """
+import ctypes, subprocess, sys
+from moviemerger._windows import repair_standard_handles
+
+def start_program():
     subprocess.run([sys.executable, "-c", "pass"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, check=True)
+
+kernel32 = ctypes.WinDLL("kernel32")
+kernel32.SetStdHandle.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+kernel32.SetStdHandle(-10 & 0xFFFFFFFF, 0x00FFFF00)  # STD_INPUT_HANDLE := a handle this process does not own
+try:
+    start_program()
 except OSError as error:
-    sys.exit({_PROBE_HANDLE_INVALID} if getattr(error, "winerror", None) == 6 else 4)
+    if getattr(error, "winerror", None) != 6:
+        raise
+else:
+    sys.exit("could not reproduce: subprocess accepted the invalid standard input handle")
+repair_standard_handles()
+start_program()
 """
 
 
-def check_console_less_start(executable: Path, recording, out_dir: Path) -> None:
-    """Windows: the app must still run ffmpeg when started without a console.
+def check_invalid_standard_handles() -> None:
+    """Windows: with an invalid standard handle, starting ffmpeg must still work after the repair.
 
-    That is how a double-click or a file dropped on the executable starts it,
-    with standard handles that ``subprocess`` cannot pass on. A plain Python
-    probe started the same way must fail on them first, which proves the
-    test reproduces the situation; the compiled app must then succeed.
+    A double-click or a file dropped on the compiled app starts it without a
+    console, which left it with invalid standard handles: every ffmpeg start
+    failed with "[WinError 6] The handle is invalid" and imageio-ffmpeg then
+    reported no ffmpeg at all. The app calls repair_standard_handles() first
+    thing (see moviemerger/_windows.py); this checks that function against
+    the real failure on Windows.
     """
-    import consoleless
-
-    probe = consoleless.run([sys.executable, "-c", _PROBE], _env_without_ffmpeg())
-    if probe != _PROBE_HANDLE_INVALID:
-        raise SystemExit(f"Could not reproduce a console-less start (probe exited with {probe}).")
-    code = consoleless.run(
-        [str(executable), "sync", str(recording.xdf), str(recording.video_a), "--fps", "25", "--out-dir", str(out_dir)],
-        _env_without_ffmpeg(),
-    )
-    if code != 0 or not (out_dir / "Video_0_synced.mp4").is_file():
-        raise SystemExit(f"Started without a console, {executable.name} sync failed (exit code {code}).")
-    print("console-less start (double-click / drop on the executable): ok")
+    result = subprocess.run([sys.executable, "-c", _INVALID_HANDLE_CHECK], capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise SystemExit(f"Invalid standard handle check failed:\n{result.stdout}{result.stderr}")
+    print("invalid standard handles (start without a console): repaired, ok")
 
 
 def run(executable: Path, *args: str) -> str:
