@@ -1,0 +1,19 @@
+# Exact versions used to build the compiled releases, so that every release is
+# built from the same, known-good dependency set. Install with
+#     pip install -r packaging/requirements-build.txt && pip install --no-deps .
+# Bump deliberately, then run the "Build and release" workflow manually to check.
+
+# Compiler. patchelf (Linux only) rewrites library paths; Nuitka rejects 0.18.0 as buggy.
+nuitka==4.3.1
+ordered-set==4.1.0
+patchelf==0.17.2.4 ; sys_platform == "linux"
+
+# Runtime dependencies (see pyproject.toml).
+# PySide6 6.9 is the newest line whose wheels still support macOS 12 and glibc 2.28;
+# 6.10+ need macOS 13 / glibc 2.34 and 6.12 needs macOS 14.
+numpy==2.5.4
+pyxdf==1.17.5
+Pillow==13.0.0
+imageio-ffmpeg==0.6.0
+PySide6-Essentials==6.9.3
+shiboken6==6.9.3

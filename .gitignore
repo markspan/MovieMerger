@@ -1,3 +1,11 @@
 Cam0.mp4
 Cam0_merged.mp4
 sub.xdf
+
+# Python
+__pycache__/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/

@@ -1,0 +1,41 @@
+MovieMerger: third-party software in this release
+=================================================
+
+MovieMerger itself is licensed under the GNU General Public License,
+version 2 only (see LICENSE.txt). Source code:
+https://github.com/markspan/MovieMerger
+
+This compiled release also contains the following software, each under its
+own license. Their source code is available from the locations listed.
+
+FFmpeg (static build, run as a separate program)
+    License:  GNU GPL version 3 (built with --enable-gpl --enable-version3,
+              including libx264)
+    Source:   https://ffmpeg.org/download.html
+    Build:    shipped by the imageio-ffmpeg package, BSD-2-Clause,
+              https://github.com/imageio/imageio-ffmpeg
+
+Qt 6 and PySide6 / Shiboken6 (dynamically linked)
+    License:  GNU LGPL version 3
+    Source:   https://download.qt.io/official_releases/
+              https://code.qt.io/cgit/pyside/pyside-setup.git/
+    You may replace the bundled Qt libraries with your own build.
+
+Python
+    License:  Python Software Foundation License
+    Source:   https://www.python.org/
+
+NumPy
+    License:  BSD-3-Clause
+    Source:   https://github.com/numpy/numpy
+
+Pillow
+    License:  MIT-CMU (HPND)
+    Source:   https://github.com/python-pillow/Pillow
+
+pyxdf
+    License:  BSD-2-Clause
+    Source:   https://github.com/xdf-modules/pyxdf
+
+The executable was compiled with Nuitka (https://nuitka.net/), whose runtime
+code included in compiled programs is licensed under the Apache License 2.0.

@@ -1,0 +1,163 @@
+# Builds standalone MovieMerger executables with Nuitka for Windows, Linux and
+# macOS (Intel; Apple Silicon Macs run it through Rosetta 2), smoke-tests each
+# one, and publishes them as a GitHub release. Two ways to release:
+#
+# * Actions tab > "Build and release" > Run workflow, with "publish" ticked:
+#   tags the selected branch as v<moviemerger.__version__> and releases it.
+# * Push a version tag yourself; it must match moviemerger.__version__:
+#
+#       git tag v2.0.0 && git push origin v2.0.0
+#
+# Without "publish" (or for a pull request touching the packaging) the
+# workflow only builds and tests; the archives are kept as workflow artifacts.
+
+name: Build and release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "packaging/**"
+      - "pyproject.toml"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish a release tagged v<package version> from the selected branch"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: packaging/requirements-build.txt
+      - name: Install Qt's system libraries (Linux)
+        if: runner.os == 'Linux'
+        # PySide6's QtGui (used to render the icons and by the GUI tests) needs these;
+        # minimal runner images do not always ship them.
+        run: sudo apt-get update -q && sudo apt-get install -y -q libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - name: Install
+        run: |
+          pip install -r packaging/requirements-build.txt pytest
+          pip install --no-deps -e .
+      - name: Run tests
+        run: pytest -q
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+          # The oldest supported runner: the binary needs the build host's glibc or newer.
+          - name: linux-x64
+            os: ubuntu-22.04
+          - name: macos-x64
+            os: macos-15-intel
+    runs-on: ${{ matrix.os }}
+    # A cold Nuitka build takes 5-15 minutes; also bounds a job stuck waiting for a runner.
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: packaging/requirements-build.txt
+      - name: Install Qt's system libraries (Linux)
+        if: runner.os == 'Linux'
+        # PySide6's QtGui (used to render the icons and by the GUI tests) needs these;
+        # minimal runner images do not always ship them.
+        run: sudo apt-get update -q && sudo apt-get install -y -q libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - name: Install build dependencies
+        run: |
+          pip install -r packaging/requirements-build.txt
+          pip install --no-deps .
+      - name: Compile with Nuitka
+        id: build
+        run: >-
+          python packaging/build.py
+          ${{ startsWith(github.ref, 'refs/tags/v') && format('--expect-version {0}', github.ref_name) || '' }}
+      - name: Smoke-test the executable
+        run: python packaging/smoke_test.py "${{ steps.build.outputs.executable }}"
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: MovieMerger-${{ matrix.name }}
+          path: ${{ steps.build.outputs.archive }}
+          if-no-files-found: error
+          compression-level: 0 # already compressed
+      - name: Upload Nuitka report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuitka-report-${{ matrix.name }}
+          path: build/compilation-report.xml
+          if-no-files-found: ignore
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Determine the release tag
+        id: tag
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/moviemerger/__init__.py)
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag="v$version"
+            # Never move or overwrite an existing release from a manual run.
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
+              echo "::error::Tag $tag already exists. Bump __version__ in src/moviemerger/__init__.py to release again."
+              exit 1
+            fi
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Download archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: MovieMerger-*
+          path: release
+          merge-multiple: true
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: MovieMerger ${{ steps.tag.outputs.version }}
+          files: release/*
+          body_path: packaging/RELEASE_NOTES.md
+          generate_release_notes: true
+          fail_on_unmatched_files: true
